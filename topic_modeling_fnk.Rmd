@@ -1,0 +1,236 @@
+---
+title: "Text as Data HW 3"
+author: "Faizan Kanji fnk9850"
+date: "4/22/2020"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+
+------
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+rm(list = ls())
+```
+
+
+# Question 2
+
+```{r echo=TRUE, warning=FALSE}
+# import libraries
+libraries <- c("topicmodels", "dplyr", "stm", "quanteda")
+lapply(libraries, require, character.only = T)
+
+library(ggplot2)
+library(stringi)
+library(quanteda.corpora)
+library(quanteda.textstats)
+library(quanteda.textplots)
+```
+
+## Q2a
+
+```{r echo=TRUE, warning=FALSE}
+
+#Get and prepare data
+
+setwd('/Users/faizankanji/NYU Classes/Spring 2022/Text as Data/Project/TextAsData_Airbnb')
+
+# Read data for June of 2018-21
+june_2018 = read.csv("Data/2018-06/listings.csv")
+june_2019 = read.csv("Data/2019-06/listings.csv")
+june_2020 = read.csv("Data/2020-06/listings.csv")
+june_2021 = read.csv("Data/2021-06/listings.csv")
+
+#2021 ratings changed to a 5 point scale from a 100 point scale. Convert back to 100 point scale
+june_2021$review_scores_rating = (june_2021$review_scores_rating / 5) * 100
+
+
+# Combine into one df
+names_2018 = names(june_2018)
+names_2019 = names(june_2019)
+names_2020 = names(june_2020)
+names_2021 = names(june_2021)
+
+common_cols = Reduce(intersect, list(names_2018, names_2019, names_2020, names_2021))
+
+data = rbind(june_2018[common_cols], june_2019[common_cols], june_2020[common_cols], june_2021[common_cols])
+
+# Create Data Variable
+data$date = as.Date(data$last_scraped)
+
+# Remove entries with less than 5 reviews and where rating is null
+data = data %>% filter (number_of_reviews >= 5)
+
+data = data[!is.na(data$review_scores_rating),]
+
+data$year = format(data$date, format="%Y")
+data$price = as.numeric(gsub('[$,]', '', data$price))
+data$text = data$description
+
+```
+
+```{r echo=TRUE, message=FALSE}
+# only keep some relevant columns (for memory efficiency)
+relevant_cols = c("text", "neighbourhood_group_cleansed", "property_type", "room_type", "accommodates", "bathrooms", "bedrooms", "beds", "price", "number_of_reviews", "review_scores_rating", "date", "year")
+data = data[relevant_cols]
+
+```
+
+```{r echo=TRUE, message=FALSE}
+# Basic EDA
+# Most ratings are above 90
+hist(data$review_scores_rating)
+
+#Median rating is 96
+summary(data$review_scores_rating)
+
+
+```
+```{r echo=TRUE, message=FALSE}
+
+data = data %>%
+    mutate(final_rating = case_when(review_scores_rating >= 98 ~ 'High',
+                                  review_scores_rating <= 92 ~ 'Low',
+                                  TRUE ~ 'Medium'))
+
+data$final_rating = as.factor(data$final_rating)
+barplot(table(data$final_rating))
+
+```
+
+
+```{r echo=TRUE, message=FALSE}
+
+# Remove non ASCII characters
+data$text = stringi::stri_trans_general(data$text, "latin-ascii")
+
+# Removes solitary letters
+data$text = gsub(" [A-z] ", " ", data$text)
+data$text = gsub("<.*?>", "", data$text)
+
+stm_dfm <- dfm(corpus(data), remove_punct = TRUE, tolower = TRUE)
+stm_dfm = dfm_remove(stm_dfm, c(stopwords("english"), "http","https","rt", "t.co"))
+
+```
+
+
+```{r echo=TRUE, message=FALSE}
+# Look at most common words in word cloud
+textplot_wordcloud(stm_dfm, max_words = 150)
+```
+
+
+
+
+```{r echo=TRUE, message=FALSE}
+
+# The full dataset is very large so take a sample to run stm on
+set.seed(120)
+sampled_data = sample_n(data, 30000)
+sampled_stm_dfm <- dfm(corpus(sampled_data), remove_punct = TRUE, tolower = TRUE)
+sampled_stm_dfm = dfm_remove(sampled_stm_dfm, c(stopwords("english"), "http","https","rt", "t.co"))
+
+stm_dfm_trimmed = dfm_trim(sampled_stm_dfm, min_docfreq=50)
+
+# Below code is the code used to run stm. Commented out for efficiency
+
+#stm1 <- stm(stm_dfm_trimmed[rowSums(stm_dfm_trimmed)!=0,], K=100, seed=100, prevalence =~final_rating + as.numeric(year) + price, data=sampled_data[rowSums(stm_dfm_trimmed)!=0,], reportevery = 10, verbose=T)
+```
+
+```{r echo=TRUE, warning=FALSE}
+
+#Loading the stm model for knitting
+
+saveRDS(stm1, "airbnb_topic_model_100_topics_sample_updated.rds")
+stm1 <- readRDS("airbnb_topic_model_100_topics_sample_updated.rds")
+```
+
+```{r echo=TRUE, warning=FALSE}
+print(paste0("the number of iterations to converge were: ", stm1$convergence$its))
+```
+
+
+## Q2e
+```{r echo=TRUE, warning=FALSE}
+plot(stm1, type = "summary", n= 3, text.cex=.4)
+```
+
+```{r echo=TRUE, warning=FALSE}
+#Top Topics:
+# 1, 99, 77, 42, 38, 23, 60, 50, 39, 78
+#Bottom Topics:
+# 8, 2, 21, 96, 30, 4, 15, 6, 73, 5
+
+#Plotting top
+plot(stm1, type = "label",  text.cex=.6, topics=c(1, 99, 77, 42, 38))
+plot(stm1, type = "label",  text.cex=.6, topics=c(23, 60, 50, 39, 78))
+
+#Plotting Bottom
+plot(stm1, type = "label",  text.cex=.6, topics=c(8, 2, 21, 96, 30))
+plot(stm1, type = "label",  text.cex=.6, topics=c(4, 15, 6, 73, 5))
+
+```
+The topics found by the model can be named as follows:
+
+```{r echo=TRUE, warning=FALSE}
+thoughts1 <- findThoughts(stm1, texts = sampled_data[rowSums(stm_dfm_trimmed)!=0,]$text, n = 2, topics = 1)$docs[[1]]
+thoughts99 <- findThoughts(stm1, texts = sampled_data[rowSums(stm_dfm_trimmed)!=0,]$text, n = 2, topics = 99)$docs[[1]]
+
+thoughts1
+thoughts99
+
+```
+
+
+
+
+
+```{r echo=TRUE, warning=FALSE}
+#Top Topics:
+# 1, 99, 77, 42, 38, 23, 60, 50, 39, 78
+#Bottom Topics:
+# 8, 2, 21, 96, 30, 4, 15, 6, 73, 5
+
+top_topics = c(1, 99, 77, 42, 38, 23, 60, 50, 39, 78)
+
+sampled_data$year_factor = as.factor(sampled_data$year)
+
+prep = estimateEffect(top_topics ~ final_rating + year_factor + price, stm1, 
+                      metadata = sampled_data[rowSums(stm_dfm_trimmed)!=0,], uncertainty = "Global")
+
+#sampled_data$numeric_date = as.numeric(sampled_data$date)
+#year_effect<- estimateEffect(c(4, 7) ~ year_n, stm1, meta=sampled_data[rowSums(stm_dfm_trimmed)!=0,])
+
+plot(prep, "final_rating", method = "difference", cov.value1 = "High", cov.value2 = "Low", model=stm1, xlab="prevalence", xlim=c(-.015, .015), labeltype = "custom", custom.labels=top_topics)
+
+```
+
+
+```{r echo=TRUE, warning=FALSE}
+sampled_data$numeric_year = as.numeric(sampled_data$year)
+  
+prep_2 = estimateEffect(top_topics ~ s(numeric_year), stm1, 
+                      metadata = sampled_data[rowSums(stm_dfm_trimmed)!=0,], uncertainty = "Global")
+
+plot(prep_2, "numeric_year", method = "continuous", model=stm1, xlab="year", topics=c(1, 99, 77, 42, 38))
+
+```
+
+
+
+```{r echo=TRUE, warning=FALSE}
+plot(prep, "year_factor", method = "difference", cov.value1 = 2021, cov.value2 = 2020, model=stm1, xlab="prevalence", xlim=c(-.015, .015), labeltype = "custom", custom.labels=top_topics)
+
+```
+
+```{r echo=TRUE, warning=FALSE}
+prep_3 = estimateEffect(top_topics ~ s(review_scores_rating), stm1, 
+                      metadata = sampled_data[rowSums(stm_dfm_trimmed)!=0,], uncertainty = "Global")
+
+plot(prep_3, "review_scores_rating", method = "continuous", model=stm1, xlab="rating", topics=c(1, 99, 77, 42, 38), xlim=c(80, 100), ylim=c(0.01, 0.04))
+
+```
