@@ -3,7 +3,6 @@ title: "Text as Data Project - Airbnb Topic Modeling"
 author: "Audrey Chu ac8839, Faizan Kanji fnk9850"
 date: "5/1/2022"
 output:
-  pdf_document: default
   html_document:
     df_print: paged
 ---
@@ -12,7 +11,9 @@ output:
 ------
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE,
+                      fig.path = "images/",
+                      dpi=200)
 rm(list = ls())
 ```
 
@@ -29,6 +30,7 @@ library(quanteda.textstats)
 library(quanteda.textplots)
 library(xgboost)
 library(caret)
+library(stminsights)
 ```
 
 # Data Preparation
@@ -87,7 +89,11 @@ data = data[relevant_cols]
 ```{r echo=TRUE, message=FALSE}
 # Basic EDA
 # Most ratings are above 90
-hist(data$review_scores_rating)
+
+h = hist(data$review_scores_rating, plot=FALSE)
+
+plot(h, xlab = "Ratings", ylab = "Counts",
+     main = "Histogram of Ratings", col = "violet")
 
 #Median rating is 96
 summary(data$review_scores_rating)
@@ -104,7 +110,8 @@ data = data %>%
                                   TRUE ~ 'Medium'))
 
 data$final_rating = as.factor(data$final_rating)
-barplot(table(data$final_rating))
+b = barplot(table(data$final_rating), xlab = "Rating Class", ylab = "Counts",
+     main = "Histogram of Ratings (Grouped)", col = "violet")
 
 ```
 Next we remove solitary letters and html tags from our review text. We also convert all words to lowercase, remove stopwords and punctuations before converting our corpus of Airbnb descriptions to a dfm.
@@ -169,13 +176,16 @@ plot(stm1, type = "summary", n= 3, text.cex=.4)
 We will now focus on the top 10 and bottom 10 topics
 ```{r echo=TRUE, warning=FALSE}
 #Top Topics:
-# 58, 1, 80, 44, 39, 78, 99, 62, 63, 68
+top_topics = c(58, 1, 80, 44, 39, 78, 99, 62, 63, 68)
+top_topic_names = c("Room Types", "Room Features", "Bedding Availability", "Host Welcoming Guests", 
+                    "Small Apartments in Walk-up Buildings", "Apartments Near Subway", "Nearby transportation",
+                    "Light, Restaurants and Bars nearby", "Stay Instructions", "Relaxing Day in NYC")
 #Bottom Topics:
 # 8, 85, 2, 42, 20, 96, 5, 84, 87, 28
 
 #Plotting top
-plot(stm1, type = "label",  text.cex=.6, topics=c(58, 1, 80, 44, 39), main = "Top 10 Topics: 1-5")
-plot(stm1, type = "label",  text.cex=.6, topics=c(78, 99, 62, 63, 68), main = "Top 10 Topics: 6-10")
+plot(stm1, type = "label",  text.cex=.6, topics=c(58, 1, 80, 44, 39), main = "Top 10 Topics: 1-5", topic.names = top_topic_names[1:5])
+plot(stm1, type = "label",  text.cex=.6, topics=c(78, 99, 62, 63, 68), main = "Top 10 Topics: 6-10", topic.names = top_topic_names[6:10])
 
 #Plotting Bottom
 plot(stm1, type = "label",  text.cex=.6, topics=c(8, 85, 2, 42, 20), main = "Bottom 10 Topics: 10-6")
@@ -214,46 +224,46 @@ We will now analyze topic prevalance with various covariates such as year, ratin
 #Bottom Topics:
 # 8, 85, 2, 42, 20, 96, 5, 84, 87, 28
 
-top_topics = c(58, 1, 80, 44, 39, 78, 99, 62, 63, 68)
-top_topic_names = c("Room Types", "Room Features", "Bedding Availability", "Host Welcoming Guests", 
-                    "Small Apartments in Walk-up Buildings", "Apartments Near Subway", "Nearby transportation",
-                    "Light, Restaurants and Bars nearby", "Stay Instructions", "Relaxing Day in NYC")
-
-sampled_data$year_factor = as.factor(sampled_data$year)
-
-prep = estimateEffect(top_topics ~ final_rating + year_factor + s(price), stm1, 
-                      metadata = sampled_data[rowSums(stm_dfm_trimmed)!=0,], uncertainty = "Global")
-
-#sampled_data$numeric_date = as.numeric(sampled_data$date)
-#year_effect<- estimateEffect(c(4, 7) ~ year_n, stm1, meta=sampled_data[rowSums(stm_dfm_trimmed)!=0,])
-
-plot(prep, "final_rating", method = "difference", cov.value1 = "High", cov.value2 = "Low", model=stm1, xlab="prevalence", xlim=c(-.015, .015), labeltype = "custom", custom.labels=top_topic_names)
+# top_topics = c(58, 1, 80, 44, 39, 78, 99, 62, 63, 68)
+# top_topic_names = c("Room Types", "Room Features", "Bedding Availability", "Host Welcoming Guests", 
+#                     "Small Apartments in Walk-up Buildings", "Apartments Near Subway", "Nearby transportation",
+#                     "Light, Restaurants and Bars nearby", "Stay Instructions", "Relaxing Day in NYC")
+# 
+# sampled_data$year_factor = as.factor(sampled_data$year)
+# 
+# prep = estimateEffect(top_topics ~ final_rating + year_factor + s(price), stm1, 
+#                       metadata = sampled_data[rowSums(stm_dfm_trimmed)!=0,], uncertainty = "Global")
+# 
+# #sampled_data$numeric_date = as.numeric(sampled_data$date)
+# #year_effect<- estimateEffect(c(4, 7) ~ year_n, stm1, meta=sampled_data[rowSums(stm_dfm_trimmed)!=0,])
+# 
+# plot(prep, "final_rating", method = "difference", cov.value1 = "High", cov.value2 = "Low", model=stm1, xlab="prevalence", xlim=c(-.015, .015), labeltype = "custom", custom.labels=top_topic_names)
 
 ```
 
 
 ```{r echo=TRUE, warning=FALSE, fig.height = 3.5}
-sampled_data$numeric_year = as.numeric(sampled_data$year)
-  
-prep_2 = estimateEffect(top_topics ~ s(numeric_year), stm1, 
-                      metadata = sampled_data[rowSums(stm_dfm_trimmed)!=0,], uncertainty = "Global")
-
-plot(prep_2, "numeric_year", method = "continuous", model=stm1, xlab="year", topics=c(58, 1, 80, 44, 39), labeltype = "custom", custom.labels=top_topic_names[1:5])
+# sampled_data$numeric_year = as.numeric(sampled_data$year)
+#   
+# prep_2 = estimateEffect(top_topics ~ s(numeric_year), stm1, 
+#                       metadata = sampled_data[rowSums(stm_dfm_trimmed)!=0,], uncertainty = "Global")
+# 
+# plot(prep_2, "numeric_year", method = "continuous", model=stm1, xlab="year", topics=c(58, 1, 80, 44, 39), labeltype = "custom", custom.labels=top_topic_names[1:5])
 
 ```
 
 
 
 ```{r echo=TRUE, warning=FALSE, fig.height = 4}
-plot(prep, "year_factor", method = "difference", cov.value1 = 2021, cov.value2 = 2018, model=stm1, xlab="prevalence", xlim=c(-.015, .015), labeltype = "custom", custom.labels=top_topic_names)
+# plot(prep, "year_factor", method = "difference", cov.value1 = 2021, cov.value2 = 2018, model=stm1, xlab="prevalence", xlim=c(-.015, .015), labeltype = "custom", custom.labels=top_topic_names)
 
 ```
 
 ```{r echo=TRUE, warning=FALSE, fig.height = 3.5}
-prep_3 = estimateEffect(top_topics ~ s(review_scores_rating), stm1, 
-                      metadata = sampled_data[rowSums(stm_dfm_trimmed)!=0,], uncertainty = "Global")
-
-plot(prep_3, "review_scores_rating", method = "continuous", model=stm1, xlab="rating", topics=c(58, 1, 80, 44, 39), xlim=c(85, 100), ylim=c(0.01, 0.04), labeltype = "custom", custom.labels=top_topic_names[1:5])
+# prep_3 = estimateEffect(top_topics ~ s(review_scores_rating), stm1, 
+#                       metadata = sampled_data[rowSums(stm_dfm_trimmed)!=0,], uncertainty = "Global")
+# 
+# plot(prep_3, "review_scores_rating", method = "continuous", model=stm1, xlab="rating", topics=c(58, 1, 80, 44, 39), xlim=c(85, 100), ylim=c(0.01, 0.04), labeltype = "custom", custom.labels=top_topic_names[1:5])
 
 ```
 
@@ -286,17 +296,20 @@ plot(stm2, type = "summary", n= 5, text.cex=.6)
 
 ```{r echo=TRUE, warning=FALSE}
 #Top Topics:
-# 1, 3, 12, 19, 9, 7, 8, 11, 10, 14
+top_topics = c(1, 3, 12, 19, 9, 7, 8, 11, 10, 14)
+top_topic_names = c("Private Room / Shared Space", "Welcoming to Host's Place", "Transit Nearby", 
+                    "Apartment amenities", "Large and Modern Apartments", "Luxury Homes", "Stay Instructions",
+                    "Brooklyn Apartments", "Tourist Locations", "Bedding Availability")
 
 #Plotting top
-plot(stm2, type = "label",  text.cex=.6, topics=c(1, 3, 12, 19, 9), main = "Top 10 Topics: 1-5")
-plot(stm2, type = "label",  text.cex=.6, topics=c(7, 8, 11, 10, 14), main = "Top 10 Topics: 6-10")
+plot(stm2, type = "label",  text.cex=.6, topics=c(1, 3, 12, 19, 9), main = "Top 10 Topics: 1-5", topic.names = top_topic_names[1:5])
+plot(stm2, type = "label",  text.cex=.6, topics=c(7, 8, 11, 10, 14), main = "Top 10 Topics: 6-10", topic.names = top_topic_names[6:10])
 
 ```
 The top 10 topics found by the model can be named as follows:
-1) Topic 1: Room Types
-2) Topic 3: Welcoming to Host's Home
-3) Topic 12: Near Train in Manhattan
+1) Topic 1: Private Room / Shared Space
+2) Topic 3: Welcoming to Host's Place
+3) Topic 12: Transit Nearby
 4) Topic 19: Apartment amenities
 5) Topic 9: Large and Modern Apartments
 6) Topic 7: Luxury Homes
@@ -320,321 +333,256 @@ thoughts3
 
 
 
-```{r echo=TRUE, warning=FALSE, fig.height=4}
+```{r echo=TRUE, warning=FALSE, fig.height=3.5}
 #Top Topics:
 # 1, 3, 12, 19, 9, 7, 8, 11, 10, 14
 
 top_topics = c(1, 3, 12, 19, 9, 7, 8, 11, 10, 14)
-top_topic_names = c("Room Types", "Welcoming to Host's Home", "Near Train in Manhattan", 
+top_topic_names = c("Private Room / Shared Space", "Welcoming to Host's Place", "Transit Nearby", 
                     "Apartment amenities", "Large and Modern Apartments", "Luxury Homes", "Stay Instructions",
                     "Brooklyn Apartments", "Tourist Locations", "Bedding Availability")
 
 
 sampled_data$year_factor = as.factor(sampled_data$year)
 
-prep = estimateEffect(top_topics ~ final_rating + year_factor + s(price), stm2, 
+prep = estimateEffect(top_topics ~ final_rating, stm2, 
                       metadata = sampled_data[rowSums(stm_dfm_trimmed)!=0,], uncertainty = "Global")
 
-plot(prep, "final_rating", method = "difference", cov.value1 = "High", cov.value2 = "Low", model=stm2, xlab="prevalence", xlim=c(-.03, .03), labeltype = "custom", custom.labels=top_topic_names)
+plot(prep, "final_rating", method = "difference", 
+     cov.value1 = "High", cov.value2 = "Low", 
+     model=stm2, 
+     xlab="Low ................... High", 
+     xlim=c(-.03, .03), labeltype = "custom", custom.labels=top_topic_names,
+     main = "Effect of Rating")
 
 ```
 
 
-```{r echo=TRUE, warning=FALSE, fig.height=4.5}
+```{r echo=TRUE, warning=FALSE, fig.height=2.75}
 sampled_data$numeric_year = as.numeric(sampled_data$year)
   
 prep_2 = estimateEffect(top_topics ~ s(numeric_year), stm2, 
                       metadata = sampled_data[rowSums(stm_dfm_trimmed)!=0,], uncertainty = "Global")
 
-plot(prep_2, "numeric_year", method = "continuous", model=stm2, xlab="year", topics=c(1, 3, 12, 19, 9), labeltype = "custom", custom.labels=top_topic_names[1:5])
+plot(prep_2, "numeric_year", method = "continuous", model=stm2, xlab="year", topics=c(1, 3, 12, 19, 9), labeltype = "custom", custom.labels=top_topic_names[1:5], ylim=c(0.05, 0.12))
 
-plot(prep_2, "numeric_year", method = "continuous", model=stm2, xlab="year", topics=c(7, 8, 11, 10, 14), labeltype = "custom", custom.labels=top_topic_names[6:10])
+plot(prep_2, "numeric_year", method = "continuous", model=stm2, xlab="year", topics=c(7, 8, 11, 10, 14), labeltype = "custom", custom.labels=top_topic_names[6:10], ylim=c(0.05, 0.09))
 
+```
+
+
+
+```{r echo=TRUE, warning=FALSE, fig.height=3.5}
+plot(prep_2, "numeric_year", method = "difference", 
+     cov.value1 = 2021, cov.value2 = 2018, 
+     model=stm2, 
+     xlab="2018 ................... 2021", 
+     xlim=c(-.03, .03), labeltype = "custom", custom.labels=top_topic_names,
+     main = "Topic Prevalence in 2018 vs. 2021")
+
+```
+
+```{r echo=TRUE, warning=FALSE, fig.height=2.75}
+prep_3 = estimateEffect(top_topics ~ s(review_scores_rating), stm2, 
+                      metadata = sampled_data[rowSums(stm_dfm_trimmed)!=0,], uncertainty = "Global")
+
+plot(prep_3, "review_scores_rating", method = "continuous", model=stm2, xlab="Rating", topics=c(1, 3, 12, 19, 9), labeltype = "custom", xlim=c(85, 100), ylim=c(0.03, 0.1), custom.labels=top_topic_names[1:5])
+
+plot(prep_3, "review_scores_rating", method = "continuous", model=stm2, xlab="Rating", topics=c(7, 8, 11, 10, 14), labeltype = "custom", xlim=c(85, 100), ylim=c(0.03, 0.1), custom.labels=top_topic_names[6:10])
+
+```
+
+
+
+
+
+```{r echo=TRUE, warning=FALSE, fig.height=3.5}
+#Top Topics:
+# 1, 3, 12, 19, 9, 7, 8, 11, 10, 14
+
+
+sampled_data = sampled_data %>%
+    mutate(property_type_grouped = case_when(property_type == "Apartment" | property_type == "Entire apartment" | property_type == "Loft" | property_type == "Condominium" ~ 'Apartment',
+                                  property_type == "House" | property_type == "Townhouse" | property_type == "Entire house"  ~ 'House',
+                                  property_type == "Private room in apartment" | property_type == "Private room in house" ~ "Private Room",
+                                  TRUE ~ 'Other'))
+
+sampled_data$property_type_grouped = as.factor(sampled_data$property_type_grouped)
+
+prep_4 = estimateEffect(top_topics ~ property_type_grouped, stm2, 
+                      metadata = sampled_data[rowSums(stm_dfm_trimmed)!=0,], uncertainty = "Global")
+
+plot(prep_4, "property_type_grouped", method = "difference", 
+     cov.value1 = "Apartment", cov.value2 = "House", 
+     model=stm2, 
+     xlab="House ................... Apartment", 
+     xlim=c(-.06, .06), labeltype = "custom", custom.labels=top_topic_names,
+     main = "Effect of Property Type (House vs. Apartment)")
+
+
+```
+
+```{r echo=TRUE, warning=FALSE, fig.height=3.5}
+#Top Topics:
+# 1, 3, 12, 19, 9, 7, 8, 11, 10, 14
+
+
+sampled_data$room_type = as.factor(sampled_data$room_type)
+
+prep_5 = estimateEffect(top_topics ~ room_type, stm2, 
+                      metadata = sampled_data[rowSums(stm_dfm_trimmed)!=0,], uncertainty = "Global")
+
+plot(prep_5, "room_type", method = "difference", 
+     cov.value1 = "Entire home/apt", cov.value2 = "Private room", 
+     model=stm2, 
+     xlab="Private Room ................... Entire Home / Apt", 
+     xlim=c(-.1, .1), labeltype = "custom", custom.labels=top_topic_names,
+     main = "Effect of Room Type (Private Rooms vs. Entire Homes / Apartments)")
+
+```
+
+
+
+```{r echo=TRUE, warning=FALSE, fig.height=2.75}
+
+sampled_data = sampled_data %>%
+    mutate(capped_price = case_when(price > 500  ~ 500,
+                                  TRUE ~ price))
+
+prep_6 = estimateEffect(top_topics ~ s(capped_price), stm2, 
+                      metadata = sampled_data[rowSums(stm_dfm_trimmed)!=0,], uncertainty = "Global")
+
+plot(prep_6, "capped_price", method = "continuous", model=stm2, xlab="Price", topics=c(1, 3, 12, 19, 9), labeltype = "custom", custom.labels=top_topic_names[1:5], ylim=c(0, 0.21))
+
+plot(prep_6, "capped_price", method = "continuous", model=stm2, xlab="Price", topics=c(7, 8, 11, 10, 14), labeltype = "custom", custom.labels=top_topic_names[6:10], ylim=c(0, 0.16))
+
+```
+
+
+
+
+
+```{r echo=TRUE, warning=FALSE}
+for(i in 1:10){
+  layout(matrix(c(1, 2), nrow=2), heights=c(1, 10))
+  par(mar=rep(0, 4))
+  plot.new()
+  text(x=0.5, y=0.5, top_topic_names[i], cex = 1.75, font=2, col="navyblue")
+  stm::cloud(stm2, topic = top_topics[i], min_size=1, max_size=4.5)
+}
 ```
 
 
 
 ```{r echo=TRUE, warning=FALSE, fig.height=4}
-plot(prep, "year_factor", method = "difference", cov.value1 = 2021, cov.value2 = 2018, model=stm2, xlab="prevalence", xlim=c(-.03, .03), labeltype = "custom", custom.labels=top_topic_names)
+#Top Topics:
+# 1, 3, 12, 19, 9, 7, 8, 11, 10, 14
+
+prep_99 <- estimateEffect(top_topics ~ final_rating * s(numeric_year), stm2, 
+                          metadata = sampled_data[rowSums(stm_dfm_trimmed)!=0,], uncertainty = "None")
+
+#par(mfrow=c(1,2))
+#plot(prep_99, covariate = "numeric_year", model = stm2, 
+#     method = "continuous", xlab = "Price", moderator = "final_rating", 
+#     moderator.value = "High", linecol = "blue", ylim = c(0, 0.2), printlegend = FALSE)
+
+#plot(prep_99, covariate = "numeric_year", model = stm2, 
+#     method = "continuous", xlab = "Price", moderator = "final_rating", 
+#     moderator.value = "Low", linecol = "red", ylim = c(0, 0.2), printlegend = FALSE)
+
+
+effects_int <- get_effects(estimates = prep_99,
+                          variable = 'numeric_year',
+                          type = 'continuous',
+                          moderator = 'final_rating',
+                          modval = "High") %>%
+ bind_rows(
+   get_effects(estimates = prep_99,
+               variable = 'numeric_year',
+               type = 'continuous',
+               moderator = 'final_rating',
+               modval = "Low")
+ )
+
+# 1, 3, 12, 19, 9, 7, 8, 11, 10, 14
+
+for(i in 1:10){
+  print(effects_int %>% filter(topic ==top_topics[i]) %>%
+ mutate(moderator = as.factor(moderator)) %>%
+ ggplot(aes(x = value, y = proportion, color = moderator,
+ group = moderator, fill = moderator)) +
+ geom_line() +
+  ggtitle(top_topic_names[i]) +
+ geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2)  +
+ theme_light() + labs(x = 'Year', y = 'Topic Proportion',
+ color = 'final_rating', group = 'final_rating', fill = 'final_rating'))
+}
 
-```
-
-```{r echo=TRUE, warning=FALSE, fig.height=4.5}
-prep_3 = estimateEffect(top_topics ~ s(review_scores_rating), stm2, 
-                      metadata = sampled_data[rowSums(stm_dfm_trimmed)!=0,], uncertainty = "Global")
-
-plot(prep_3, "review_scores_rating", method = "continuous", model=stm2, xlab="year", topics=c(1, 3, 12, 19, 9), labeltype = "custom", xlim=c(85, 100), ylim=c(0.03, 0.1), custom.labels=top_topic_names[1:5])
-
-plot(prep_3, "review_scores_rating", method = "continuous", model=stm2, xlab="year", topics=c(7, 8, 11, 10, 14), labeltype = "custom", xlim=c(85, 100), ylim=c(0.03, 0.1), custom.labels=top_topic_names[6:10])
-
-```
-
-
-```{r echo=TRUE, warning=FALSE}
-stm::cloud(stm2, topic = 1, min_size=1, max_size=4.5,scale=c(3.5,0.25))
-stm::cloud(stm2, topic = 3, min_size=1, max_size=4.5,scale=c(3.5,0.25))
-stm::cloud(stm2, topic = 12, min_size=1, max_size=4.5,scale=c(3.5,0.25))
-stm::cloud(stm2, topic = 19, min_size=1, max_size=4.5,scale=c(3.5,0.25))
-stm::cloud(stm2, topic = 9, min_size=1, max_size=4.5,scale=c(3.5,0.25))
-stm::cloud(stm2, topic = 7, min_size=1, max_size=4.5,scale=c(3.5,0.25))
-stm::cloud(stm2, topic = 8, min_size=1, max_size=4.5,scale=c(3.5,0.25))
-stm::cloud(stm2, topic = 11, min_size=1, max_size=4.5,scale=c(3.5,0.25))
-stm::cloud(stm2, topic = 10, min_size=1, max_size=4.5,scale=c(3.5,0.25))
-stm::cloud(stm2, topic = 14, min_size=1, max_size=4.5,scale=c(3.5,0.25))
-```
-
-
-
-
-
-# Scratch: Trying Modeling
-
-
-
-
-```{r echo=TRUE, warning=FALSE}
-sampled_data_for_model = sampled_data[rowSums(stm_dfm_trimmed)!=0,]
-sampled_data_for_model = cbind(sampled_data_for_model, stm1$theta)
-
-sampled_data_for_model = sampled_data_for_model %>% filter(final_rating == "High" | final_rating=="Low")
-sampled_data_for_model$binary_rating = as.numeric(sampled_data_for_model$final_rating) - 1
-
-set.seed(1984L)
-prop_train <- 0.8 #we will use 80% of the data as our training set
-# Save the indexes
-
-hosts = unique(sampled_data_for_model$host_id)
-
-ids <- 1:length(hosts)
-
-ids_train <- sample(ids, ceiling(prop_train*length(ids)), replace = FALSE)
-ids_test <- ids[-ids_train]
-hosts_train = hosts[ids_train]
-hosts_test = hosts[ids_test]
-
-prop_cols = as.character(seq(1, 100))
-
-train_prop <- (sampled_data_for_model %>% filter(host_id %in% hosts_train))[prop_cols]
-train_label <- (sampled_data_for_model %>% filter(host_id %in% hosts_train))["binary_rating"]
-test_prop <- (sampled_data_for_model %>% filter(host_id %in% hosts_test))[prop_cols]
-test_label <- (sampled_data_for_model %>% filter(host_id %in% hosts_test))["binary_rating"]
-
-```
-
-
-
-
-
-
-```{r echo=TRUE, warning=FALSE}
-# sampled_data_for_model = sampled_data[rowSums(stm_dfm_trimmed)!=0,]
-# sampled_data_for_model = cbind(sampled_data_for_model, stm1$theta)
-# 
-# sampled_data_for_model = sampled_data_for_model %>% filter(final_rating == "High" | final_rating=="Low")
-# sampled_data_for_model$binary_rating = as.numeric(sampled_data_for_model$final_rating) - 1
-# 
-# set.seed(1984L)
-# prop_train <- 0.8 #we will use 80% of the data as our training set
-# # Save the indexes
-# ids <- 1:nrow(sampled_data_for_model)
-# 
-# ids_train <- sample(ids, ceiling(prop_train*length(ids)), replace = FALSE)
-# ids_test <- ids[-ids_train]
-# prop_cols = as.character(seq(1, 100))
-# train_prop <- sampled_data_for_model[ids_train,][prop_cols]
-# train_label <- sampled_data_for_model[ids_train,]["binary_rating"]
-# test_prop <- sampled_data_for_model[ids_test,][prop_cols]
-# test_label <- sampled_data_for_model[ids_test,]["binary_rating"]
-
-```
-
-
-```{r echo=TRUE, warning=FALSE}
-
-xgb <- xgboost(data = as.matrix(train_prop), label = as.matrix(train_label), nrounds= 100, objective = "binary:logistic")
-
-```
-
-
-```{r echo=TRUE, warning=FALSE}
-
-pred = predict(xgb, as.matrix(test_prop))
-prediction <- as.numeric(pred > 0.5)
-
-# get confusion matrix (see slide 35 from class)
-cmat <- table(as.matrix(test_label), prediction)
-cmat
-nb_acc <- sum(diag(cmat))/sum(cmat) # accuracy = (TP + TN) / (TP + FP + TN + FN)
-nb_recall <- cmat[2,2]/sum(cmat[2,]) # recall = TP / (TP + FN)
-nb_precision <- cmat[2,2]/sum(cmat[,2]) # precision = TP / (TP + FP)
-nb_f1 <- 2*(nb_recall*nb_precision)/(nb_recall + nb_precision)
-
-baseline_acc <- max(prop.table(table(as.matrix(test_label))))
-
-# print
-cat(
-  "Baseline Accuracy: ", baseline_acc, "\n",
-  "Accuracy:",  nb_acc, "\n",
-  "Recall:",  nb_recall, "\n",
-  "Precision:",  nb_precision, "\n",
-  "F1-score:", nb_f1
-)
-
-```
-
-```{r echo=TRUE, warning=FALSE}
-# Compute feature importance matrix
-importance_matrix <- xgb.importance(prop_cols, model = xgb)
-# Nice graph
-xgb.plot.importance(importance_matrix[1:10,])
-
-```
-
-
-```{r echo=TRUE, warning=FALSE}
-important_topics = as.numeric(importance_matrix[1:10,]$Feature)
-plot(stm1, type = "label",  text.cex=.6, topics=important_topics[1:5])
-
-prep = estimateEffect(important_topics ~ final_rating, stm1, 
-                      metadata = sampled_data[rowSums(stm_dfm_trimmed)!=0,])
-
-#sampled_data$numeric_date = as.numeric(sampled_data$date)
-#year_effect<- estimateEffect(c(4, 7) ~ year_n, stm1, meta=sampled_data[rowSums(stm_dfm_trimmed)!=0,])
-
-plot(prep, "final_rating", method = "difference", cov.value1 = "High", cov.value2 = "Low", model=stm1, xlab="prevalence", xlim=c(-.015, .015), labeltype = "custom", custom.labels=important_topics)
-
-
-cloud()
-
-```
-
-
-
-
-
-
-
-```{r echo=TRUE, warning=FALSE}
-
-#Get and prepare data
-
-# Read data for June of 2018-21
-dec_2021 = read.csv("Data/2021-12/listings.csv")
-
-#2021 ratings changed to a 5 point scale from a 100 point scale. Convert back to 100 point scale
-dec_2021$review_scores_rating = (dec_2021$review_scores_rating / 5) * 100
-
-# Create Data Variable
-dec_2021$date = as.Date(dec_2021$last_scraped)
-
-# Remove entries with less than 5 reviews and where rating is null
-dec_2021 = dec_2021 %>% filter (number_of_reviews >= 5)
-
-dec_2021 = dec_2021[!is.na(dec_2021$review_scores_rating),]
-
-dec_2021$year = format(dec_2021$date, format="%Y")
-dec_2021$price = as.numeric(gsub('[$,]', '', dec_2021$price))
-dec_2021$text = dec_2021$description
-
-```
-
-```{r echo=TRUE, message=FALSE}
-# only keep some relevant columns (for memory efficiency)
-relevant_cols = c("text", "neighbourhood_group_cleansed", "property_type", "room_type", "accommodates", "bathrooms", "bedrooms", "beds", "price", "number_of_reviews", "review_scores_rating", "date", "year", "host_id")
-dec_2021 = dec_2021[relevant_cols]
-
-```
-
-```{r echo=TRUE, message=FALSE}
-# Basic EDA
-# Most ratings are above 90
-hist(dec_2021$review_scores_rating)
-
-#Median rating is 96
-summary(dec_2021$review_scores_rating)
 
 
 ```
 
 
-```{r echo=TRUE, message=FALSE}
+```{r echo=TRUE, warning=FALSE, fig.height=4}
+#Top Topics:
+# 1, 3, 12, 19, 9, 7, 8, 11, 10, 14
 
-dec_2021 = dec_2021 %>%
-    mutate(final_rating = case_when(review_scores_rating >= 98 ~ 'High',
-                                  review_scores_rating <= 92 ~ 'Low',
-                                  TRUE ~ 'Medium'))
+prep_100 <- estimateEffect(top_topics ~ final_rating * s(capped_price), stm2, 
+                          metadata = sampled_data[rowSums(stm_dfm_trimmed)!=0,], uncertainty = "None")
 
-dec_2021$final_rating = as.factor(dec_2021$final_rating)
-barplot(table(dec_2021$final_rating))
+#par(mfrow=c(1,2))
+#plot(prep_99, covariate = "numeric_year", model = stm2, 
+#     method = "continuous", xlab = "Price", moderator = "final_rating", 
+#     moderator.value = "High", linecol = "blue", ylim = c(0, 0.2), printlegend = FALSE)
 
-```
-
-
-```{r echo=TRUE, message=FALSE}
-
-# Remove non ASCII characters
-dec_2021$text = stringi::stri_trans_general(dec_2021$text, "latin-ascii")
-
-# Removes solitary letters
-dec_2021$text = gsub(" [A-z] ", " ", dec_2021$text)
-dec_2021$text = gsub("<.*?>", "", dec_2021$text)
-
-dec_2021 = dec_2021 %>% filter(final_rating == "High" | final_rating=="Low")
-dec_2021$binary_rating = as.numeric(dec_2021$final_rating) - 1
-
-dec_dfm <- dfm(corpus(dec_2021), remove_punct = TRUE, tolower = TRUE)
-dec_dfm = dfm_remove(dec_dfm, c(stopwords("english"), "http","https","rt", "t.co"))
-
-dec_2021 = dec_2021[rowSums(dec_dfm)!=0,]
-dec_2021 = dec_2021[-8424, ]
-
-dec_dfm <- dfm(corpus(dec_2021), remove_punct = TRUE, tolower = TRUE)
-dec_dfm = dfm_remove(dec_dfm, c(stopwords("english"), "http","https","rt", "t.co"))
-
-dec_dfm_stm = convert(dec_dfm, "stm")
-
-old_dfm_stm = convert(stm_dfm_trimmed, "stm")
-
-aligned = alignCorpus(dec_dfm_stm, old_dfm_stm$vocab)
-
-new_stm = fitNewDocuments(stm1, aligned$documents)
-
-```
+#plot(prep_99, covariate = "numeric_year", model = stm2, 
+#     method = "continuous", xlab = "Price", moderator = "final_rating", 
+#     moderator.value = "Low", linecol = "red", ylim = c(0, 0.2), printlegend = FALSE)
 
 
-```{r echo=TRUE, warning=FALSE}
-#dec_for_model = dec_2021[rowSums(dec_dfm)!=0,]
-#dec_for_model = dec_for_model[-8424, ]
-dec_for_model = cbind(dec_2021, new_stm$theta)
+effects_int <- get_effects(estimates = prep_100,
+                          variable = 'capped_price',
+                          type = 'continuous',
+                          moderator = 'final_rating',
+                          modval = "High") %>%
+ bind_rows(
+   get_effects(estimates = prep_100,
+               variable = 'capped_price',
+               type = 'continuous',
+               moderator = 'final_rating',
+               modval = "Low")
+ )
 
-dec_prop <- (dec_for_model %>% filter(!(host_id %in% hosts_train)))[prop_cols]
-dec_label <- (dec_for_model %>% filter(!(host_id %in% hosts_train)))["binary_rating"]
+# 1, 3, 12, 19, 9, 7, 8, 11, 10, 14
+
+for(i in 1:10){
+  print(effects_int %>% filter(topic ==top_topics[i]) %>%
+ mutate(moderator = as.factor(moderator)) %>%
+ ggplot(aes(x = value, y = proportion, color = moderator,
+ group = moderator, fill = moderator)) +
+ geom_line() +
+  ggtitle(top_topic_names[i]) +
+ geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2)  +
+ theme_light() + labs(x = 'Price', y = 'Topic Proportion',
+ color = 'final_rating', group = 'final_rating', fill = 'final_rating'))
+}
+
+
 
 ```
 
+```{r echo=TRUE, warning=FALSE, fig.height=4}
+cor = topicCorr(stm2, cutoff=0.05)
 
-```{r echo=TRUE, warning=FALSE}
+rating_effect = get_effects(estimates = prep,
+            variable = 'final_rating',
+            type = 'difference',
+            cov_val1 = "High", cov_val2 = "Low")
 
-pred = predict(xgb, as.matrix(dec_prop))
-prediction <- as.numeric(pred > 0.5)
+f <- function(x,n=5){
+    hcl.colors(n, alpha = 0.5, palette ="RdYlGn")[cut(x,n)]
+}
 
-# get confusion matrix (see slide 35 from class)
-cmat <- table(as.matrix(dec_label), prediction)
-cmat
-nb_acc <- sum(diag(cmat))/sum(cmat) # accuracy = (TP + TN) / (TP + FP + TN + FN)
-nb_recall <- cmat[2,2]/sum(cmat[2,]) # recall = TP / (TP + FN)
-nb_precision <- cmat[2,2]/sum(cmat[,2]) # precision = TP / (TP + FP)
-nb_f1 <- 2*(nb_recall*nb_precision)/(nb_recall + nb_precision)
-
-baseline_acc <- max(prop.table(table(as.matrix(dec_label))))
-
-# print
-cat(
-  "Baseline Accuracy: ", baseline_acc, "\n",
-  "Accuracy:",  nb_acc, "\n",
-  "Recall:",  nb_recall, "\n",
-  "Precision:",  nb_precision, "\n",
-  "F1-score:", nb_f1
-)
-
+plot(cor, topics = top_topics, vlabels = top_topic_names, vertex.color = f(rating_effect$difference), vertex.label.cex = 1.5, main="Topic Correlation Graph")
 ```
+
